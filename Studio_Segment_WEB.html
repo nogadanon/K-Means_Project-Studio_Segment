@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Segment Studio</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --accent:#14b3a8;
+    --accent-dark:#0a6b64;
+    --accent-light:#8fe6dd;
+    --warm:#c9784f;
+    --text:#0c2b29;
+    --muted:#5f7c79;
+    --border:#cfe8e4;
+    --bg-soft:#e7f6f4;
+    --ok:#0f9d84;
+    --err:#dc2626;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:
+      radial-gradient(ellipse 60% 50% at 18% 12%, rgba(255,255,255,.20), transparent 60%),
+      radial-gradient(ellipse 55% 45% at 88% 18%, rgba(5,60,57,.55), transparent 60%),
+      radial-gradient(ellipse 55% 45% at 78% 88%, rgba(4,52,50,.5), transparent 55%),
+      radial-gradient(ellipse 40% 35% at 8% 85%, rgba(255,255,255,.14), transparent 55%),
+      linear-gradient(150deg, #22c6ba 0%, #0f9a90 35%, #0a6d67 70%, #073f3c 100%);
+    background-attachment:fixed;
+    min-height:100vh;
+  }
+
+  /* Weathered-wall texture: grain + sparse rust flecks, echoing the reference photo's palette */
+  .bg-grain, .bg-flecks{position:fixed;inset:0;z-index:0;pointer-events:none;}
+  .bg-grain{
+    opacity:.05;
+    mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .bg-flecks{
+    opacity:.3;
+    background-image:radial-gradient(circle, rgba(201,120,79,.55) 1px, transparent 1.6px);
+    background-size:42px 42px;
+    background-position:12px 18px;
+  }
+
+  .page{position:relative;z-index:1;max-width:980px;margin:0 auto;padding:52px 24px 100px;}
+
+  .hero{color:#fff;margin-bottom:26px;}
+  .hero h1{font-size:2.5rem;font-weight:800;margin:0 0 8px;letter-spacing:-.02em;text-shadow:0 2px 16px rgba(0,20,18,.35);}
+  .hero p{margin:0;font-size:1rem;font-weight:500;color:rgba(255,255,255,.94);text-shadow:0 1px 8px rgba(0,20,18,.3);}
+
+  .app-shell{
+    background:rgba(255,255,255,.92);
+    backdrop-filter:blur(12px);
+    -webkit-backdrop-filter:blur(12px);
+    border:1px solid rgba(255,255,255,.6);
+    border-radius:22px;
+    padding:36px 40px 48px;
+    box-shadow:0 30px 70px -25px rgba(3,38,36,.55), 0 4px 14px rgba(3,38,36,.12);
+  }
+
+  h2{font-size:1.25rem;font-weight:800;margin:40px 0 14px;border-top:1px solid var(--border);padding-top:28px;color:var(--accent-dark);letter-spacing:-.01em;}
+  h2:first-of-type{border-top:none;padding-top:0;}
+  label.field-label{display:block;font-size:.85rem;color:var(--text);margin-bottom:6px;font-weight:600;}
+
+  .dropzone{
+    border:1.5px dashed var(--border);
+    border-radius:14px;
+    background:var(--bg-soft);
+    padding:22px 26px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:16px;
+    cursor:pointer;
+    transition:border-color .15s, background .15s;
+  }
+  .dropzone.dragover{border-color:var(--accent);background:#dcf5f1;}
+  .dropzone .dz-left{display:flex;align-items:center;gap:14px;}
+  .dropzone .dz-icon{font-size:1.6rem;}
+  .dropzone .dz-title{font-weight:700;font-size:.95rem;}
+  .dropzone .dz-sub{font-size:.8rem;color:var(--muted);margin-top:2px;}
+  button.browse{
+    background:#fff;border:1.5px solid var(--border);border-radius:9px;color:var(--accent-dark);
+    padding:9px 18px;font-size:.85rem;font-weight:700;cursor:pointer;transition:border-color .15s,background .15s;
+  }
+  button.browse:hover{border-color:var(--accent);background:#f2fbfa;}
+  .file-chip{
+    margin-top:12px;display:flex;align-items:center;gap:10px;
+    border:1px solid var(--border);border-radius:10px;padding:10px 14px;
+    max-width:480px;background:#fff;
+  }
+  .file-chip .fname{font-size:.85rem;font-weight:600;}
+  .file-chip .fsize{font-size:.78rem;color:var(--muted);margin-left:6px;}
+  .file-chip .fx{margin-left:auto;cursor:pointer;color:var(--muted);font-size:1rem;background:none;border:none;}
+  .file-chip .fx:hover{color:var(--text);}
+
+  .table-wrap{
+    max-height:360px;overflow:auto;border:1px solid var(--border);border-radius:10px;
+  }
+  table{border-collapse:collapse;width:100%;font-size:.85rem;}
+  thead th{
+    position:sticky;top:0;background:var(--bg-soft);color:var(--accent-dark);
+    font-weight:700;text-align:left;padding:9px 14px;border-bottom:1px solid var(--border);white-space:nowrap;
+  }
+  tbody td{padding:7px 14px;border-bottom:1px solid #eef6f5;white-space:nowrap;}
+  tbody td.idx, thead th.idx{color:var(--accent);text-align:right;padding-right:10px;}
+  tbody tr:hover{background:#f1faf9;}
+
+  .slider-row{display:flex;gap:40px;flex-wrap:wrap;margin-bottom:16px;}
+  .slider-block{min-width:260px;flex:1;}
+  .slider-block .slabel{display:flex;justify-content:space-between;font-size:.85rem;margin-bottom:6px;}
+  .slider-block .slabel .val{color:var(--accent-dark);font-weight:700;}
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;width:100%;height:5px;border-radius:3px;background:var(--border);outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:17px;height:17px;border-radius:50%;background:var(--accent);cursor:pointer;
+    border:2px solid #fff;box-shadow:0 0 0 1px var(--accent),0 2px 6px rgba(10,90,85,.4);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:17px;height:17px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #fff;box-shadow:0 0 0 1px var(--accent),0 2px 6px rgba(10,90,85,.4);
+  }
+  .range-ends{display:flex;justify-content:space-between;font-size:.72rem;color:var(--muted);margin-top:2px;}
+
+  button.primary{
+    background:linear-gradient(135deg, var(--accent), var(--accent-dark));
+    border:none;color:#fff;border-radius:9px;padding:10px 22px;
+    font-size:.9rem;font-weight:700;cursor:pointer;
+    box-shadow:0 5px 16px -5px rgba(10,90,85,.55);
+    transition:transform .15s, box-shadow .15s, opacity .15s;
+  }
+  button.primary:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 9px 22px -6px rgba(10,90,85,.65);}
+  button.primary:active:not(:disabled){transform:translateY(0);}
+  button.primary:disabled{opacity:.4;cursor:not-allowed;box-shadow:none;transform:none;}
+
+  .hint{font-size:.85rem;color:var(--muted);margin:10px 0;}
+  .status{font-size:.85rem;margin-top:10px;}
+  .status.error{color:var(--err);}
+  .status.ok{color:var(--ok);}
+  .chart-wrap{max-width:640px;margin-top:20px;}
+
+  .download-link{
+    display:inline-block;margin-top:4px;
+    background:linear-gradient(135deg, var(--accent), var(--accent-dark));
+    color:#fff;text-decoration:none;
+    padding:12px 26px;border-radius:11px;font-weight:700;font-size:.92rem;
+    box-shadow:0 8px 20px -6px rgba(10,90,85,.55);
+    transition:transform .15s, box-shadow .15s;
+  }
+  .download-link:hover{transform:translateY(-1px);box-shadow:0 12px 26px -6px rgba(10,90,85,.65);}
+
+  .warn-box{
+    border:1px solid #fde68a;background:#fffbeb;color:#92400e;border-radius:10px;padding:10px 14px;font-size:.82rem;margin:10px 0;
+  }
+  section.step{opacity:.4;pointer-events:none;transition:opacity .25s;}
+  section.step.active{opacity:1;pointer-events:auto;}
+  .spinner{
+    display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);
+    border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  /* ---------- Step 1: feature confirmation ---------- */
+  .feature-cols{display:flex;gap:24px;flex-wrap:wrap;margin-top:16px;}
+  .feature-col{flex:1;min-width:240px;}
+  .feature-col h3{font-size:.78rem;color:var(--accent-dark);margin:0 0 8px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;}
+  .feature-list-box{min-height:48px;border:1.5px dashed var(--border);border-radius:10px;padding:10px;background:var(--bg-soft);}
+  .feature-chip{
+    display:inline-flex;align-items:center;gap:2px;background:#fff;border:1px solid var(--border);
+    border-radius:20px;padding:4px 4px 4px 12px;margin:0 6px 6px 0;font-size:.8rem;font-weight:500;
+  }
+  .feature-chip button{border:none;background:none;cursor:pointer;font-size:.85rem;color:var(--muted);padding:3px 7px;border-radius:50%;line-height:1;}
+  .feature-chip button:hover{color:var(--accent-dark);background:var(--bg-soft);}
+  .feature-empty{color:var(--muted);font-size:.8rem;font-style:italic;}
+
+  .table-title{font-weight:700;font-size:.9rem;margin:18px 0 8px;color:var(--accent-dark);}
+  .table-title:first-child{margin-top:0;}
+
+  /* ---------- Step 4: let the description column show in full, no horizontal scroll ---------- */
+  #step4TableWrap table{table-layout:fixed;width:100%;}
+  #step4TableWrap td, #step4TableWrap th{white-space:normal;word-break:break-word;}
+  #step4TableWrap th:nth-child(1), #step4TableWrap td:nth-child(1){width:36px;}
+  #step4TableWrap th:nth-child(2), #step4TableWrap td:nth-child(2){width:100px;}
+  #step4TableWrap th:nth-child(3), #step4TableWrap td:nth-child(3){width:70px;}
+  #step4TableWrap th:nth-child(4), #step4TableWrap td:nth-child(4){width:170px;}
+  #step4TableWrap th:nth-child(5), #step4TableWrap td:nth-child(5){width:auto;}
+</style>
+</head>
+<body>
+
+<div class="bg-grain" aria-hidden="true"></div>
+<div class="bg-flecks" aria-hidden="true"></div>
+
+<div class="page">
+  <header class="hero">
+    <h1>Segment Studio</h1>
+    <p>Upload a file, confirm your features, and let K-Means find the segments.</p>
+  </header>
+
+  <div class="app-shell">
+
+    <section id="upload-section">
+      <label class="field-label">Choose a CSV file</label>
+      <div class="dropzone" id="dropzone">
+        <div class="dz-left">
+          <span class="dz-icon">📤</span>
+          <div>
+            <div class="dz-title">Drag and drop file here</div>
+            <div class="dz-sub">Limit 200MB per file • CSV (other formats will be converted if possible)</div>
+          </div>
+        </div>
+        <button class="browse" id="browseBtn" type="button">Browse files</button>
+      </div>
+      <input type="file" id="fileInput" style="display:none" accept=".csv,.tsv,.txt,.json,.xlsx,.xls" />
+      <div id="fileChip" style="display:none" class="file-chip">
+        <span class="dz-icon">📄</span>
+        <span class="fname" id="fnameLabel"></span>
+        <span class="fsize" id="fsizeLabel"></span>
+        <button class="fx" id="removeFileBtn" title="Remove file">✕</button>
+      </div>
+      <div id="uploadStatus" class="status"></div>
+    </section>
+
+    <section class="step" id="step1">
+      <h2>Step 1: CSV Table</h2>
+      <div id="step1TableWrap" class="table-wrap"></div>
+
+      <div class="hint" style="margin-top:20px">Confirm which features are numeric vs. categorical before clustering. Move a feature with the arrow, or remove it with ✕ to exclude it entirely.</div>
+      <div class="feature-cols">
+        <div class="feature-col">
+          <h3>numeric_features</h3>
+          <div class="feature-list-box" id="numericFeaturesList"></div>
+        </div>
+        <div class="feature-col">
+          <h3>categorical_features</h3>
+          <div class="feature-list-box" id="categoricalFeaturesList"></div>
+        </div>
+      </div>
+      <button class="primary" id="applyFeaturesBtn" style="margin-top:14px">Apply</button>
+      <div id="featuresStatus" class="status"></div>
+    </section>
+
+    <section class="step" id="step2">
+      <h2>Step 2: WCSS (Elbow)</h2>
+      <div class="slider-row">
+        <div class="slider-block">
+          <div class="slabel"><span>Min k</span><span class="val" id="kMinVal">2</span></div>
+          <input type="range" id="kMinSlider" min="2" max="20" value="2" />
+          <div class="range-ends"><span>2</span><span>20</span></div>
+        </div>
+        <div class="slider-block">
+          <div class="slabel"><span>Max k</span><span class="val" id="kMaxVal">10</span></div>
+          <input type="range" id="kMaxSlider" min="2" max="20" value="10" />
+          <div class="range-ends"><span>2</span><span>20</span></div>
+        </div>
+      </div>
+      <button class="primary" id="runWcssBtn">Run WCSS</button>
+      <div id="wcssStatus" class="status"></div>
+      <div id="wcssTableWrap" class="table-wrap" style="max-width:320px;margin-top:16px;display:none"></div>
+      <div class="chart-wrap"><canvas id="elbowChart"></canvas></div>
+    </section>
+
+    <section class="step" id="step3">
+      <h2>Step 3: Choose k and create clusters</h2>
+      <div class="slider-block" style="max-width:520px">
+        <div class="slabel"><span>Select k</span><span class="val" id="kSelVal">3</span></div>
+        <input type="range" id="kSelSlider" min="2" max="10" value="3" />
+        <div class="range-ends"><span id="kSelMinLabel">2</span><span id="kSelMaxLabel">10</span></div>
+      </div>
+      <button class="primary" id="createClustersBtn" style="margin-top:14px">Create clusters</button>
+      <div id="clustersStatus" class="status"></div>
+      <div class="hint">Cluster counts (name/description empty for now)</div>
+      <div id="step3TableWrap" class="table-wrap" style="max-width:720px"></div>
+    </section>
+
+    <section class="step" id="step4">
+      <h2>Step 4: Generate group name + description (LLaMA)</h2>
+      <div class="table-title">Number of observations per cluster and mean values</div>
+      <div id="table1Wrap" class="table-wrap"></div>
+      <div class="table-title">Common values for categorical features per cluster</div>
+      <div id="table2Wrap" class="table-wrap"></div>
+      <button class="primary" id="genNamesBtn">Generate names/descriptions with LLaMA</button>
+      <div id="llmStatus" class="status"></div>
+      <div class="hint">Cluster labels (with name + description)</div>
+      <div id="step4TableWrap" class="table-wrap"></div>
+    </section>
+
+    <section class="step" id="step5">
+      <h2>Step 5: Download clustered file</h2>
+      <div><a href="#" class="download-link" id="downloadBtn">Download clustered CSV</a></div>
+      <div id="downloadStatus" class="status"></div>
+    </section>
+
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// All computation (parsing, scaling, KMeans, WCSS, LLM naming, CSV export) happens server-side
+// in api.py, which mirrors Studio_Segment_K-Means_Project.ipynb. Start it with
+// `uvicorn api:app --reload --port 8010` before using this page -- see API_BASE below if
+// you run it on a different host/port.
+const API_BASE = 'http://127.0.0.1:8010';
+
+const $ = (id) => document.getElementById(id);
+function setActive(id, active){ $(id).classList.toggle('active', !!active); }
+
+const state = {
+  uploadedFile: null,       // the raw File object, resent to each endpoint
+  fileName: null,           // matches python var `file_name` (no extension)
+  columns: [],
+  rows: [],
+  numericFeatures: [],      // draft lists, editable in Step 1
+  categoricalFeatures: [],
+  confirmedNumericFeatures: [],   // locked in by the "Apply" button; used by every later step
+  confirmedCategoricalFeatures: [],
+  kMin: 2, kMax: 10,
+  wcss: [],
+  k: 3,
+  step3: [],                // [{cluster_id, count, name, description}]
+  table1: {columns: [], rows: []},   // notebook's table_1: count + <feature>_mean per cluster
+  table2: {columns: [], rows: []},   // notebook's table_2: <feature>_most_common per cluster
+  fileNameClustered: null,
+  elbowChartObj: null
+};
+
+async function postFile(path, file, extraFields){
+  const fd = new FormData();
+  fd.append('file', file, file.name);
+  if(extraFields){
+    Object.entries(extraFields).forEach(([k,v]) => fd.append(k, v));
+  }
+  const res = await fetch(API_BASE + path, {method:'POST', body: fd});
+  if(!res.ok){
+    let detail = `HTTP ${res.status}`;
+    try { detail = (await res.json()).detail || detail; } catch(e){}
+    throw new Error(detail);
+  }
+  return res;
+}
+
+function confirmedFeatureFields(){
+  return {
+    numeric_features: JSON.stringify(state.confirmedNumericFeatures),
+    categorical_features: JSON.stringify(state.confirmedCategoricalFeatures)
+  };
+}
+
+// ---------- file handling ----------
+const dropzone = $('dropzone'), fileInput = $('fileInput'), browseBtn = $('browseBtn');
+browseBtn.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('click', (e) => { if(e.target !== browseBtn) fileInput.click(); });
+['dragenter','dragover'].forEach(evt => dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.classList.add('dragover'); }));
+['dragleave','drop'].forEach(evt => dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.classList.remove('dragover'); }));
+dropzone.addEventListener('drop', e => { if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', e => { if(e.target.files.length) handleFile(e.target.files[0]); });
+$('removeFileBtn').addEventListener('click', resetAll);
+
+function resetAll(){
+  state.uploadedFile = null; state.fileName = null; state.columns = []; state.rows = [];
+  state.numericFeatures = []; state.categoricalFeatures = [];
+  state.confirmedNumericFeatures = []; state.confirmedCategoricalFeatures = [];
+  state.wcss = []; state.step3 = []; state.fileNameClustered = null;
+  state.table1 = {columns: [], rows: []}; state.table2 = {columns: [], rows: []};
+  $('fileChip').style.display = 'none';
+  fileInput.value = '';
+  $('uploadStatus').textContent = '';
+  ['step1','step2','step3','step4','step5'].forEach(id => setActive(id, false));
+  $('step1TableWrap').innerHTML = '';
+  $('wcssTableWrap').innerHTML = ''; $('wcssTableWrap').style.display='none';
+  $('step3TableWrap').innerHTML = '';
+  $('table1Wrap').innerHTML = ''; $('table2Wrap').innerHTML = '';
+  $('step4TableWrap').innerHTML = '';
+  $('featuresStatus').textContent = ''; $('clustersStatus').textContent = '';
+  $('llmStatus').textContent = ''; $('downloadStatus').textContent = '';
+  $('downloadBtn').textContent = 'Download clustered CSV';
+  if(state.elbowChartObj){ state.elbowChartObj.destroy(); state.elbowChartObj = null; }
+}
+
+async function handleFile(file){
+  $('uploadStatus').className = 'status';
+  $('uploadStatus').innerHTML = '<span class="spinner"></span>Reading file...';
+  try {
+    const res = await postFile('/preview', file);
+    const data = await res.json();
+
+    state.uploadedFile = file;               // get_file_name() happens server-side in /preview
+    state.fileName = data.file_name;          // == python `file_name` (no extension)
+    state.columns = data.columns;
+    state.rows = data.rows;
+    state.numericFeatures = data.numeric_features.slice();
+    state.categoricalFeatures = data.categorical_features.slice();
+
+    $('fnameLabel').textContent = file.name;
+    $('fsizeLabel').textContent = formatBytes(file.size);
+    $('fileChip').style.display = 'flex';
+    $('uploadStatus').className = 'status ok';
+    $('uploadStatus').textContent = data.converted
+      ? `Converted "${file.name}" to CSV format (${state.rows.length} rows).`
+      : `Loaded ${state.rows.length} rows, ${state.columns.length} columns.`;
+    $('downloadBtn').textContent = `Download ${state.fileName}_clustered.csv`;
+
+    renderStep1();
+    renderFeatureLists();
+    setActive('step1', true);
+  } catch(err){
+    $('uploadStatus').className = 'status error';
+    $('uploadStatus').textContent = `Could not read "${file.name}": ${err.message}`;
+  }
+}
+
+// ---------- Step 1: table ----------
+function renderStep1(){
+  $('step1TableWrap').innerHTML = buildTableHTML(state.columns, state.rows);
+}
+
+function buildTableHTML(columns, rows, extraCols){
+  const cols = extraCols ? columns.concat(extraCols) : columns;
+  let html = '<table><thead><tr><th class="idx"></th>';
+  cols.forEach(c => html += `<th>${escapeHtml(c)}</th>`);
+  html += '</tr></thead><tbody>';
+  rows.forEach((r, i) => {
+    html += `<tr><td class="idx">${i}</td>`;
+    cols.forEach(c => {
+      const v = r[c];
+      html += `<td>${v === null || v === undefined ? '' : escapeHtml(String(v))}</td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  return html;
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+function formatBytes(b){
+  if(b < 1024) return b + ' B';
+  if(b < 1024*1024) return (b/1024).toFixed(1) + 'KB';
+  return (b/1024/1024).toFixed(1) + 'MB';
+}
+
+// ---------- Step 1: numeric_features / categorical_features confirmation ----------
+function renderFeatureLists(){
+  renderFeatureListBox('numericFeaturesList', state.numericFeatures, 'numeric');
+  renderFeatureListBox('categoricalFeaturesList', state.categoricalFeatures, 'categorical');
+}
+
+function renderFeatureListBox(elId, list, kind){
+  const el = $(elId);
+  if(!list.length){
+    el.innerHTML = '<span class="feature-empty">(none)</span>';
+    return;
+  }
+  el.innerHTML = '';
+  list.forEach(name => {
+    const chip = document.createElement('span');
+    chip.className = 'feature-chip';
+    const moveArrow = kind === 'numeric' ? '→' : '←';
+    const moveTitle = `Move to ${kind === 'numeric' ? 'categorical_features' : 'numeric_features'}`;
+    chip.innerHTML = `${escapeHtml(name)} <button type="button" class="chip-move" title="${moveTitle}">${moveArrow}</button><button type="button" class="chip-del" title="Remove">✕</button>`;
+    chip.querySelector('.chip-move').addEventListener('click', () => moveFeature(name, kind));
+    chip.querySelector('.chip-del').addEventListener('click', () => deleteFeature(name, kind));
+    el.appendChild(chip);
+  });
+}
+
+function moveFeature(name, fromKind){
+  if(fromKind === 'numeric'){
+    state.numericFeatures = state.numericFeatures.filter(n => n !== name);
+    state.categoricalFeatures.push(name);
+  } else {
+    state.categoricalFeatures = state.categoricalFeatures.filter(n => n !== name);
+    state.numericFeatures.push(name);
+  }
+  renderFeatureLists();
+}
+
+function deleteFeature(name, kind){
+  if(kind === 'numeric') state.numericFeatures = state.numericFeatures.filter(n => n !== name);
+  else state.categoricalFeatures = state.categoricalFeatures.filter(n => n !== name);
+  renderFeatureLists();
+}
+
+$('applyFeaturesBtn').addEventListener('click', () => {
+  if(!state.numericFeatures.length && !state.categoricalFeatures.length){
+    setStatus('featuresStatus', 'Select at least one feature to cluster on.', true);
+    return;
+  }
+  state.confirmedNumericFeatures = state.numericFeatures.slice();
+  state.confirmedCategoricalFeatures = state.categoricalFeatures.slice();
+  setStatus('featuresStatus', `Confirmed ${state.confirmedNumericFeatures.length} numeric + ${state.confirmedCategoricalFeatures.length} categorical feature(s). Steps 2-5 will use this selection.`, false);
+  setActive('step2', true);
+});
+
+// ---------- Step 2: WCSS (elbow) ----------
+const kMinSlider = $('kMinSlider'), kMaxSlider = $('kMaxSlider');
+kMinSlider.addEventListener('input', () => {
+  if(+kMinSlider.value > +kMaxSlider.value) kMaxSlider.value = kMinSlider.value;
+  $('kMinVal').textContent = kMinSlider.value;
+  $('kMaxVal').textContent = kMaxSlider.value;
+});
+kMaxSlider.addEventListener('input', () => {
+  if(+kMaxSlider.value < +kMinSlider.value) kMinSlider.value = kMaxSlider.value;
+  $('kMinVal').textContent = kMinSlider.value;
+  $('kMaxVal').textContent = kMaxSlider.value;
+});
+
+$('runWcssBtn').addEventListener('click', async () => {
+  if(state.rows.length < 2){ setStatus('wcssStatus', 'Not enough rows to cluster.', true); return; }
+  state.kMin = +kMinSlider.value;
+  state.kMax = +kMaxSlider.value;
+  setStatus('wcssStatus', 'Running KMeans for each k on the server...', false, true);
+  $('runWcssBtn').disabled = true;
+  try {
+    const res = await postFile('/elbow', state.uploadedFile, {k_min: state.kMin, k_max: state.kMax, ...confirmedFeatureFields()});
+    const data = await res.json();
+    state.wcss = data.wcss;
+    renderWcssTable();
+    renderElbowChart();
+    setStatus('wcssStatus', `Computed WCSS for k = ${state.kMin}..${state.kMax}.`, false);
+    setupKSelBounds();
+    setActive('step3', true);
+  } catch(err){
+    setStatus('wcssStatus', `Failed to compute WCSS: ${err.message}`, true);
+  } finally {
+    $('runWcssBtn').disabled = false;
+  }
+});
+
+function setStatus(elId, msg, isError, loading){
+  const el = $(elId);
+  el.className = 'status' + (isError ? ' error' : loading ? '' : ' ok');
+  el.innerHTML = (loading ? '<span class="spinner"></span>' : '') + msg;
+}
+
+function renderWcssTable(){
+  const wrap = $('wcssTableWrap');
+  wrap.style.display = 'block';
+  let html = '<table><thead><tr><th class="idx"></th><th>k</th><th>WCSS</th></tr></thead><tbody>';
+  state.wcss.forEach((row, i) => {
+    html += `<tr><td class="idx">${i}</td><td>${row.k}</td><td>${round4(row.wcss)}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+function round4(x){ return Math.round(x*10000)/10000; }
+
+function renderElbowChart(){
+  const ctx = $('elbowChart').getContext('2d');
+  if(state.elbowChartObj) state.elbowChartObj.destroy();
+  const accent = getComputedStyle(document.body).getPropertyValue('--accent').trim() || '#14b3a8';
+  state.elbowChartObj = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: state.wcss.map(r => r.k),
+      datasets: [{
+        label: 'WCSS',
+        data: state.wcss.map(r => r.wcss),
+        borderColor: accent,
+        backgroundColor: accent,
+        pointRadius: 4,
+        tension: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {display:false},
+        title: {display:true, text:'The Elbow Method for Optimal K'}
+      },
+      scales: {
+        x: {title:{display:true, text:'Number of Clusters (K)'}},
+        y: {title:{display:true, text:'WCSS (Within-Cluster Sum of Squares)'}}
+      }
+    }
+  });
+}
+
+// ---------- Step 3: create clusters ----------
+function setupKSelBounds(){
+  const sl = $('kSelSlider');
+  sl.min = state.kMin; sl.max = state.kMax;
+  sl.value = Math.min(Math.max(3, state.kMin), state.kMax);
+  $('kSelMinLabel').textContent = state.kMin;
+  $('kSelMaxLabel').textContent = state.kMax;
+  $('kSelVal').textContent = sl.value;
+}
+$('kSelSlider').addEventListener('input', () => { $('kSelVal').textContent = $('kSelSlider').value; });
+
+$('createClustersBtn').addEventListener('click', async () => {
+  state.k = +$('kSelSlider').value;
+  setStatus('clustersStatus', 'Clustering on the server...', false, true);
+  $('createClustersBtn').disabled = true;
+  try {
+    const res = await postFile('/clusters', state.uploadedFile, {k: state.k, ...confirmedFeatureFields()});
+    const data = await res.json();
+    state.step3 = data.step_3;
+    state.table1 = data.table_1 || {columns: [], rows: []};
+    state.table2 = data.table_2 || {columns: [], rows: []};
+    renderStep3Table();
+    renderTable1();
+    renderTable2();
+    renderStep4Table();
+    setStatus('clustersStatus', `Created ${state.k} clusters.`, false);
+    setActive('step4', true);
+  } catch(err){
+    setStatus('clustersStatus', `Failed to create clusters: ${err.message}`, true);
+  } finally {
+    $('createClustersBtn').disabled = false;
+  }
+});
+
+function renderStep3Table(){
+  $('step3TableWrap').innerHTML = buildTableHTML(['cluster_id','count','name','description'], state.step3);
+}
+
+// ---------- Step 4: table_1 / table_2 (from the notebook's step_4 dataframes) ----------
+function renderTable1(){
+  $('table1Wrap').innerHTML = buildTableHTML(state.table1.columns, state.table1.rows);
+}
+function renderTable2(){
+  $('table2Wrap').innerHTML = buildTableHTML(state.table2.columns, state.table2.rows);
+}
+
+// ---------- Step 4: LLaMA names/descriptions ----------
+$('genNamesBtn').addEventListener('click', async () => {
+  if(!state.step3.length){ return; }
+  const btn = $('genNamesBtn');
+  btn.disabled = true;
+  setStatus('llmStatus', 'Calling LLaMA...', false, true);
+  try {
+    const res = await postFile('/name-clusters', state.uploadedFile, {k: state.k, ...confirmedFeatureFields()});
+    const data = await res.json();
+    state.step3 = data.step_3;
+    renderStep4Table();
+    setStatus('llmStatus', 'Names and descriptions generated.', false);
+    state.fileNameClustered = `${state.fileName}_clustered.csv`;
+    $('downloadBtn').textContent = `Download ${state.fileNameClustered}`;
+    setActive('step5', true);
+  } catch(err){
+    setStatus('llmStatus', `Failed to reach the LLaMA API (${err.message}). You can still continue to Step 5 without names.`, true);
+    state.fileNameClustered = `${state.fileName}_clustered.csv`;
+    $('downloadBtn').textContent = `Download ${state.fileNameClustered}`;
+    setActive('step5', true);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function renderStep4Table(){
+  $('step4TableWrap').innerHTML = buildTableHTML(['cluster_id','count','name','description'], state.step3);
+}
+
+// ---------- Step 5: download ----------
+$('downloadBtn').addEventListener('click', async (e) => {
+  e.preventDefault();
+  if(!state.uploadedFile) return;
+  setStatus('downloadStatus', 'Preparing file on the server...', false, true);
+  try {
+    const names = state.step3.map(r => ({cluster_id: r.cluster_id, name: r.name || ''}));
+    const res = await postFile('/download', state.uploadedFile, {k: state.k, names: JSON.stringify(names), ...confirmedFeatureFields()});
+    const blob = await res.blob();
+    // X-File-Name-Clustered is percent-encoded server-side (a non-ASCII file_name, e.g.
+    // Hebrew, can't go raw into an HTTP header value) -- decode it back here.
+    const rawFname = res.headers.get('X-File-Name-Clustered');
+    const fname = (rawFname ? decodeURIComponent(rawFname) : null) || state.fileNameClustered || `${state.fileName}_clustered.csv`;
+    state.fileNameClustered = fname;
+    $('downloadBtn').textContent = `Download ${fname}`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fname;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setStatus('downloadStatus', `Downloaded ${fname}.`, false);
+  } catch(err){
+    setStatus('downloadStatus', `Failed to download: ${err.message}`, true);
+  }
+});
+</script>
+</body>
+</html>
